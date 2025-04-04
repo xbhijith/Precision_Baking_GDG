@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+from tkinter import simpledialog
 import cv2
 from PIL import Image, ImageTk
 import google.generativeai as genai
@@ -13,7 +14,7 @@ DENSITY_DB = {
 }
 
 # Replace "YOUR_API_KEY_HERE" with your Gemini API Key.
-genai.configure(api_key="YOUR_API_KEY_HERE")
+genai.configure(api_key="API KEY HERE")
 
 class NutritionConverter:
     def __init__(self, root):
@@ -65,27 +66,45 @@ class GeminiScreen(tk.Frame):
         self.retake_btn.pack(side="left", padx=10)
         self.retake_btn.config(state="disabled")
 
-        self.analyze_btn = tk.Button(btn_frame, text="Analyze with Gemini", command=self.analyze_with_gemini)
+        self.analyze_btn = tk.Button(btn_frame, text="Analyze", command=self.analyze_with_gemini)
         self.analyze_btn.pack(side="left", padx=10)
 
         self.result_label = tk.Label(btn_frame, textvariable=controller.detected_info, wraplength=600, justify="left")
         self.result_label.pack(side="left", padx=10)
 
         self.captured_image = None
-        self.video_stream = cv2.VideoCapture(0)
+
+        self.ask_for_ip_port()
+
         self.streaming = True
+        self.frame_skip = 1  # Change this number to skip more or fewer frames
+        self.frame_counter = 0
 
         self.update_video_stream()
+
+    def ask_for_ip_port(self):
+        ip = simpledialog.askstring("Camera IP", "Enter the IP address:")
+        port = simpledialog.askstring("Camera Port", "Enter the port:")
+
+        if ip and port:
+            stream_url = f'http://{ip}:{port}/video'
+        else:
+            stream_url = 0  # webcam if no input is given
+
+        self.video_stream = cv2.VideoCapture(stream_url)
 
     def update_video_stream(self):
         if self.streaming:
             ret, frame = self.video_stream.read()
             if ret:
-                self.current_frame = frame
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))
-                self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
+                self.frame_counter += 1
+                if self.frame_counter % self.frame_skip == 0:
+                    self.current_frame = frame
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))
+                    self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
             self.after(30, self.update_video_stream)
+
 
     def capture_image(self):
         self.streaming = False
@@ -121,7 +140,7 @@ class GeminiScreen(tk.Frame):
                     {
                         "parts": [
                             {"mime_type": "image/jpeg", "data": image_bytes},
-                            {"text": "You have 4 choices, 'Flour', 'Powdered Sugar', 'Salt', 'Baking Powder'. What ingredient is shown in this image? Answer with only the name of the ingredient."}
+                            {"text": "You have 4 choices, 'Flour', 'Powdered Sugar', 'Salt', 'Baking Powder'. What ingredient is shown in this image? Answer with only the name of the ingredient, and predict the density of the ingredient in grams per milliliter."}
                         ]
                     }
                 ]
