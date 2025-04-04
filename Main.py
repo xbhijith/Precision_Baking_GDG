@@ -61,6 +61,10 @@ class GeminiScreen(tk.Frame):
         self.capture_btn = tk.Button(btn_frame, text="Capture Image", command=self.capture_image)
         self.capture_btn.pack(side="left", padx=10)
 
+        self.retake_btn = tk.Button(btn_frame, text="Retake", command=self.retake_image)
+        self.retake_btn.pack(side="left", padx=10)
+        self.retake_btn.config(state="disabled")
+
         self.analyze_btn = tk.Button(btn_frame, text="Analyze with Gemini", command=self.analyze_with_gemini)
         self.analyze_btn.pack(side="left", padx=10)
 
@@ -84,18 +88,23 @@ class GeminiScreen(tk.Frame):
             self.after(30, self.update_video_stream)
 
     def capture_image(self):
-        self.streaming = False  # Stop the stream
+        self.streaming = False
         self.captured_image = self.current_frame.copy()
 
-        # Save image file
         cv2.imwrite("captured_ingredient.jpg", self.captured_image)
 
-        # Show static captured image on canvas
         frame_rgb = cv2.cvtColor(self.captured_image, cv2.COLOR_BGR2RGB)
         self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))
         self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
 
-        self.controller.detected_info.set("Image captured and saved as 'captured_ingredient.jpg'.")
+        self.controller.detected_info.set("Image captured.")
+        self.retake_btn.config(state="normal")
+
+    def retake_image(self):
+        self.streaming = True
+        self.retake_btn.config(state="disabled")
+        self.controller.detected_info.set("Resumed video stream.")
+        self.update_video_stream()
 
     def analyze_with_gemini(self):
         if self.captured_image is None:
@@ -112,7 +121,7 @@ class GeminiScreen(tk.Frame):
                     {
                         "parts": [
                             {"mime_type": "image/jpeg", "data": image_bytes},
-                            {"text": "What ingredient is shown in this image? Also estimate how much is there, (e.g. 1/2 cup, 100g, etc)."}
+                            {"text": "You have 4 choices, 'Flour', 'Powdered Sugar', 'Salt', 'Baking Powder'. What ingredient is shown in this image? Answer with only the name of the ingredient."}
                         ]
                     }
                 ]
@@ -134,17 +143,17 @@ class ConversionScreen(tk.Frame):
         form_frame = tk.Frame(self)
         form_frame.pack(pady=20)
 
-        tk.Label(form_frame, text="Ingredient:").grid(row=0, column=0, padx=5, pady=5)
-        self.ingredient = ttk.Combobox(form_frame, values=list(DENSITY_DB.keys()))
-        self.ingredient.grid(row=0, column=1, padx=5, pady=5)
-
-        tk.Label(form_frame, text="Amount:").grid(row=1, column=0, padx=5, pady=5)
+        tk.Label(form_frame, text="Amount:").grid(row=0, column=0, padx=5, pady=5)
         self.amount = tk.Entry(form_frame)
-        self.amount.grid(row=1, column=1, padx=5, pady=5)
-
-        tk.Label(form_frame, text="Unit:").grid(row=2, column=0, padx=5, pady=5)
+        self.amount.grid(row=0, column=1, padx=5, pady=5)
+        
+        tk.Label(form_frame, text="Unit:").grid(row=1, column=0, padx=5, pady=5)
         self.unit = ttk.Combobox(form_frame, values=['Cups', 'Tablespoons', 'Teaspoons'])
-        self.unit.grid(row=2, column=1, padx=5, pady=5)
+        self.unit.grid(row=1, column=1, padx=5, pady=5)
+    
+        tk.Label(form_frame, text="of Ingredient:").grid(row=2, column=0, padx=5, pady=5)
+        self.ingredient = ttk.Combobox(form_frame, values=list(DENSITY_DB.keys()))
+        self.ingredient.grid(row=2, column=1, padx=5, pady=5)
 
         convert_btn = tk.Button(form_frame, text="Convert", command=self.convert)
         convert_btn.grid(row=3, columnspan=2, pady=10)
