@@ -6,13 +6,8 @@ import numpy as np
 from ultralytics import YOLO 
 
 DENSITY_DB = {
-    'All-Purpose Flour': 0.56,
-    'Granulated Sugar': 0.85,
-    'Brown Sugar': 0.72,
-    'Butter': 0.96,
-    'Milk': 1.03,
-    'Honey': 1.42,
-    'Olive Oil': 0.92,
+    'Flour': 0.56,
+    'Sugar': 0.85,
     'Salt': 1.20,
     'Baking Powder': 0.74
 }
@@ -20,7 +15,6 @@ DENSITY_DB = {
 class IngredientDetector:
     def __init__(self, model_path='best.pt'):
         try:
-            # Load your fine-tuned YOLOv8 model
             self.model = YOLO(model_path)
             self.model_loaded = True
             print("Model loaded successfully.")
@@ -161,9 +155,9 @@ class ConversionScreen(tk.Frame):
             unit = self.unit.get()
             
             unit_ml = {
-                'cups': 240,
-                'tablespoons': 15,
-                'teaspoons': 5
+                'Cups': 240,
+                'Tablespoons': 15,
+                'Teaspoons': 5
             }.get(unit, 1)
             
             if ingredient in DENSITY_DB:
