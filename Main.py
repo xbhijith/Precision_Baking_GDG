@@ -67,28 +67,35 @@ class GeminiScreen(tk.Frame):
         self.result_label = tk.Label(btn_frame, textvariable=controller.detected_info, wraplength=600, justify="left")
         self.result_label.pack(side="left", padx=10)
 
-        self.captured_image = None  # Store captured image for analysis
+        self.captured_image = None
+        self.video_stream = cv2.VideoCapture(0)
+        self.streaming = True
+
+        self.update_video_stream()
+
+    def update_video_stream(self):
+        if self.streaming:
+            ret, frame = self.video_stream.read()
+            if ret:
+                self.current_frame = frame
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))
+                self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
+            self.after(30, self.update_video_stream)
 
     def capture_image(self):
-        cap = cv2.VideoCapture(0)
-        ret, frame = cap.read()
-        cap.release()
+        self.streaming = False  # Stop the stream
+        self.captured_image = self.current_frame.copy()
 
-        if not ret:
-            self.controller.detected_info.set("Failed to capture image.")
-            return
+        # Save image file
+        cv2.imwrite("captured_ingredient.jpg", self.captured_image)
 
-        # Show image on canvas
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Show static captured image on canvas
+        frame_rgb = cv2.cvtColor(self.captured_image, cv2.COLOR_BGR2RGB)
         self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))
         self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
 
-        # Save image for analysis
-        self.captured_image = frame
-
-        
-        cv2.imwrite("captured_ingredient.jpg", frame)
-        self.controller.detected_info.set("Image captured. Click 'Analyze with Gemini' to process.")
+        self.controller.detected_info.set("Image captured and saved as 'captured_ingredient.jpg'.")
 
     def analyze_with_gemini(self):
         if self.captured_image is None:
@@ -113,6 +120,11 @@ class GeminiScreen(tk.Frame):
             self.controller.detected_info.set(response.text)
         except Exception as e:
             self.controller.detected_info.set(f"Error: {str(e)}")
+
+    def destroy(self):
+        self.streaming = False
+        self.video_stream.release()
+        super().destroy()
 
 class ConversionScreen(tk.Frame):
     def __init__(self, parent, controller):
