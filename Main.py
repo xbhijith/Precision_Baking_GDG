@@ -4,6 +4,8 @@ from tkinter import simpledialog
 import cv2
 from PIL import Image, ImageTk
 import google.generativeai as genai
+import threading
+
 
 # Adjust the denisty, these values are just the first results of the density of ingredients.
 DENSITY_DB = {
@@ -14,7 +16,7 @@ DENSITY_DB = {
 }
 
 # Replace "YOUR_API_KEY_HERE" with your Gemini API Key.
-genai.configure(api_key="API KEY HERE")
+genai.configure(api_key="YOUR_API_KEY_HERE")
 
 class NutritionConverter:
     def __init__(self, root):
@@ -73,57 +75,62 @@ class GeminiScreen(tk.Frame):
         self.result_label.pack(side="left", padx=10)
 
         self.captured_image = None
+        self.latest_frame = None
+        self.streaming = False
+        self.frame_skip = 3
+        self.gui_frame_counter = 0
 
         self.ask_for_ip_port()
 
-        self.streaming = True
-        self.frame_skip = 1  # Change this number to skip more or fewer frames
-        self.frame_counter = 0
-
-        self.update_video_stream()
+        self.start_video_thread()
+        self.update_video_gui()
 
     def ask_for_ip_port(self):
         ip = simpledialog.askstring("Camera IP", "Enter the IP address:")
         port = simpledialog.askstring("Camera Port", "Enter the port:")
 
-        if ip and port:
-            stream_url = f'http://{ip}:{port}/video'
-        else:
-            stream_url = 0  # webcam if no input is given
-
+        stream_url = f"http://{ip}:{port}/video" if ip and port else 0
         self.video_stream = cv2.VideoCapture(stream_url)
 
-    def update_video_stream(self):
-        if self.streaming:
+    def start_video_thread(self):
+        self.streaming = True
+        self.capture_thread = threading.Thread(target=self.capture_frames, daemon=True)
+        self.capture_thread.start()
+
+    def capture_frames(self):
+        while self.streaming:
             ret, frame = self.video_stream.read()
             if ret:
-                self.frame_counter += 1
-                if self.frame_counter % self.frame_skip == 0:
-                    self.current_frame = frame
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))
-                    self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
-            self.after(30, self.update_video_stream)
+                self.latest_frame = frame
 
+    def update_video_gui(self):
+        if self.streaming and self.latest_frame is not None:
+            self.gui_frame_counter += 1
+            if self.gui_frame_counter % self.frame_skip == 0:
+                frame_rgb = cv2.cvtColor(self.latest_frame, cv2.COLOR_BGR2RGB)
+                self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))
+                self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
+        self.after(30, self.update_video_gui)
 
     def capture_image(self):
-        self.streaming = False
-        self.captured_image = self.current_frame.copy()
+        if self.latest_frame is not None:
+            self.streaming = False
+            self.captured_image = self.latest_frame.copy()
 
-        cv2.imwrite("captured_ingredient.jpg", self.captured_image)
+            cv2.imwrite("captured_ingredient.jpg", self.captured_image)
 
-        frame_rgb = cv2.cvtColor(self.captured_image, cv2.COLOR_BGR2RGB)
-        self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))
-        self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
+            frame_rgb = cv2.cvtColor(self.captured_image, cv2.COLOR_BGR2RGB)
+            self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame_rgb))
+            self.canvas.itemconfig(self.image_on_canvas, image=self.photo)
 
-        self.controller.detected_info.set("Image captured.")
-        self.retake_btn.config(state="normal")
+            self.controller.detected_info.set("Image captured.")
+            self.retake_btn.config(state="normal")
 
     def retake_image(self):
         self.streaming = True
+        self.start_video_thread()
         self.retake_btn.config(state="disabled")
         self.controller.detected_info.set("Resumed video stream.")
-        self.update_video_stream()
 
     def analyze_with_gemini(self):
         if self.captured_image is None:
