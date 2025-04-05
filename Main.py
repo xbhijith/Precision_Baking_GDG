@@ -50,6 +50,14 @@ class NutritionConverter:
 
 class GeminiScreen(tk.Frame):
     def __init__(self, parent, controller):
+        self.webcam_fallback = False
+        self.failed_reads = 0
+        self.failed_threshold = 5
+
+        self.ip = None
+        self.port = None
+
+
         tk.Frame.__init__(self, parent)
         self.controller = controller
 
@@ -57,6 +65,10 @@ class GeminiScreen(tk.Frame):
         self.canvas.pack()
 
         self.image_on_canvas = self.canvas.create_image(0, 0, anchor=tk.NW)
+
+        self.toggle_btn = tk.Button(self, text="Use IP Camera", command=self.toggle_camera)
+        self.toggle_btn.pack(pady=5)
+
 
         btn_frame = tk.Frame(self)
         btn_frame.pack(pady=10)
@@ -85,11 +97,34 @@ class GeminiScreen(tk.Frame):
         self.start_video_thread()
         self.update_video_gui()
 
-    def ask_for_ip_port(self):
-        ip = simpledialog.askstring("Camera IP", "Enter the IP address:")
-        port = simpledialog.askstring("Camera Port", "Enter the port:")
+    def toggle_camera(self):
+        self.streaming = False
+        if self.video_stream:
+            self.video_stream.release()
+        if not self.ip or not self.port:
+            self.ip = simpledialog.askstring("Camera IP", "Enter the IP address:")
+            self.port = simpledialog.askstring("Camera Port", "Enter the port:")
 
-        stream_url = f"http://{ip}:{port}/video" if ip and port else 0
+        if self.use_webcam_fallback:
+            stream_url = f"http://{self.ip}:{self.port}/video" if self.ip and self.port else 0
+            self.video_stream = cv2.VideoCapture(stream_url)
+            self.use_webcam_fallback = False
+            self.toggle_btn.config(text="Use Webcam")
+            self.controller.detected_info.set("Switched to IP Camera.")
+        else:
+            self.video_stream = cv2.VideoCapture(0)
+            self.use_webcam_fallback = True
+            self.toggle_btn.config(text="Use IP Camera")
+            self.controller.detected_info.set("Switched to Webcam.")
+
+        self.start_video_thread()
+
+
+    def ask_for_ip_port(self):
+        if not self.ip or not self.port:
+            self.ip = simpledialog.askstring("Camera IP", "Enter the IP address:")
+            self.port = simpledialog.askstring("Camera Port", "Enter the port:")
+        stream_url = f"http://{self.ip}:{self.port}/video" if self.ip and self.port else 0
         self.video_stream = cv2.VideoCapture(stream_url)
 
     def start_video_thread(self):
@@ -102,6 +137,20 @@ class GeminiScreen(tk.Frame):
             ret, frame = self.video_stream.read()
             if ret:
                 self.latest_frame = frame
+                self.failed_reads = 0
+            else:
+                self.failed_reads += 1
+                if self.failed_reads >= self.failed_threshold:
+                    self.switch_to_webcam()
+                    break
+
+    def switch_to_webcam(self):
+        self.controller.detected_info.set("IP Camera failed. Switching to webcam.")
+        self.video_stream.release()
+        self.use_webcam_fallback = True
+        self.video_stream = cv2.VideoCapture(0)
+        self.failed_reads = 0
+        self.start_video_thread()
 
     def update_video_gui(self):
         if self.streaming and self.latest_frame is not None:
@@ -126,6 +175,7 @@ class GeminiScreen(tk.Frame):
             self.controller.detected_info.set("Image captured.")
             self.retake_btn.config(state="normal")
 
+    
     def retake_image(self):
         self.streaming = True
         self.start_video_thread()
@@ -147,7 +197,7 @@ class GeminiScreen(tk.Frame):
                     {
                         "parts": [
                             {"mime_type": "image/jpeg", "data": image_bytes},
-                            {"text": "You have 4 choices, 'Flour', 'Powdered Sugar', 'Salt', 'Baking Powder'. What ingredient is shown in this image? Answer with only the name of the ingredient, and predict the density of the ingredient in grams per milliliter."}
+                            {"text": "This is an image of a single baking ingredient. Choose the best match from the following list: Flour, Powdered Sugar, Salt, or Baking Powder. Respond with the name only, and then provide your estimated density in grams per milliliter in the format: 'Ingredient Name: Density g/mL'."}
                         ]
                     }
                 ]
